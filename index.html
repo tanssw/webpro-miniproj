@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="/css/all.css" rel="stylesheet" />
+    <link href="/css/bulma.css" rel="stylesheet" />
+    <script src="/js/all.js"></script>
+    <script src="/js/vue.js"></script>
+    <title>My ToDo List</title>
+  </head>
+  <style>
+    .done {
+      text-decoration: line-through;
+    }
+    .btn-add-list {
+      color: darkgrey;
+      transition: .4s;
+    }
+    .btn-add-list:hover {
+      color: #888888
+    }
+    .color-grey {
+      color: #666666;
+    }
+    .pointer {
+      cursor: pointer;
+    }
+  </style>
+  <body>
+    <div id="app">
+      <section class="hero">
+        <div class="hero-body">
+          <p class="title">
+            My ToDo List
+            <span @click="openListAdder">
+              <i class="fas fa-plus-circle btn-add-list ml-2"></i>
+            </span>
+          </p>
+          <p class="subtitle">Tasanai Srisawat [ 62070074 ]</p>
+        </div>
+      </section>
+      <section>
+        <div class="container">
+          <p class="subtitle my-2">Completed: {{completeItems}} Tasks</p>
+          <p class="subtitle my-2">Incomplete: {{incompleteItems}} Tasks</p>
+          <p class="subtitle my-2">Flagged: {{flaggedItems}} Tasks</p>
+          <!-- TODOs' list -->
+          <div class="columns my-5" v-for="list in lists" :key="list.id">
+            <div class="column is-8">
+              <div class="is-size-4 has-text-weight-bold mb-2">
+                <i class="fas fa-chevron-right mr-2"></i>
+                <span class="mr-2">{{list.name}}</span>
+                <span class="color-grey">
+                  <span class="icon is-small mx-2 pointer" @click="openListEditor(list.id)">
+                    <i class="fas fa-edit fa-xs"></i>
+                  </span>
+                  <span class="icon is-small mx-2 pointer" @click="openListRemover(list.id)">
+                    <i class="fas fa-trash-alt fa-xs"></i>
+                  </span>
+                </span>
+              </div>
+              <div v-for="todo in filteredTodos(list.id)" :key="todo.id">
+                <div class="box level py-3 my-2" v-show="passFilter(list.id, todo.id)">
+                  <div class="control">
+                    <label class="checkbox is-flex is-align-items-center my-1" :style="{color: todo.color}">
+                      <input type="checkbox" v-model="todo.checked" />
+                      <span class="ml-3 mr-1" :class="{done: todo.checked}">{{todo.title}}</span>
+                      <span v-if="todo.flagged" class="mx-1">
+                        <i class="far fa-flag"></i>
+                      </span>
+                      <span v-if="todo.date" class="mx-1">(Due by {{todo.date}})</span>
+                    </label>
+                  </div>
+                  <div class="level-right">
+                    <span class="icon is-small pointer" @click="openEditor(todo.id)">
+                      <i class="fas fa-edit"></i>
+                    </span>
+                    <span class="icon is-small ml-5 pointer" @click="openRemover(todo.id)">
+                      <i class="fas fa-trash-alt"></i>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="column is-4">
+              <!-- Filter Panel -->
+              <div class="card my-2">
+                <header class="card-header has-background-primary">
+                  <p class="card-header-title">Filter</p>
+                  <p class="card-header-icon">
+                    <span class="card-header-icon icon">
+                      <i class="fas fa-filter"></i>
+                    </span>
+                  </p>
+                </header>
+                <div class="card-content">
+                  <div class="content">
+                    <div class="control">
+                      <label class="checkbox">
+                        <input type="checkbox" v-model="filters[list.id].hideComplete"/>
+                        Hide completed tasks
+                      </label>
+                    </div>
+                    <div class="control">
+                      <label class="checkbox">
+                        <input type="checkbox" v-model="filters[list.id].hideUnflag" />
+                        Show only flagged tasks
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Sort Panel -->
+              <div class="card my-2">
+                <header class="card-header has-background-primary">
+                  <p class="card-header-title">Sort</p>
+                  <p class="card-header-icon">
+                    <span class="card-header-icon icon">
+                      <i class="fas fa-filter"></i>
+                    </span>
+                  </p>
+                </header>
+                <div class="card-content">
+                  <div class="content">
+                    <div>
+                      <input type="radio" id="s01" value="alphabet" v-model="sorts[list.id].selected">
+                      <label for="s01">Sort alphabetically</label>
+                    </div>
+                    <div>
+                      <input type="radio" id="s02" value="incomplete" v-model="sorts[list.id].selected">
+                      <label for="s02">Sort incomplete task first</label>
+                    </div>
+                    <div>
+                      <input type="radio" id="s03" value="flagged" v-model="sorts[list.id].selected">
+                      <label for="s03">Sort flagged task first</label>
+                    </div>
+                    <div>
+                      <input type="radio" id="s04" value="date" v-model="sorts[list.id].selected">
+                      <label for="s04">Sort by due date (ascending)</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Input Panel -->
+          <div class="my-5">
+            <div class="is-size-3 has-text-weight-bold">Add new Task</div>
+            <div class="field">
+              <div class="control">
+                <div class="columns">
+                  <div class="column is-3">
+                    <input v-model="input.text" class="input " type="text" placeholder="Task Name" />
+                  </div>
+                  <div class="column is-2">
+                    <div class="dropdown" :class="{'is-active': input.list.active}">
+                      <div class="dropdown-trigger">
+                        <button class="button" @click="toggleListOption" aria-haspopup="true" aria-controls="dropdown-menu">
+                          <span class="mr-3">{{listSelectorText(input.list.value)}}</span>
+                          <span class="icon is-small">
+                            <i class="fas fa-angle-down" aria-hidden="true"></i>
+                          </span>
+                        </button>
+                      </div>
+                      <div class="dropdown-menu" id="dropdown-menu" role="menu">
+                        <div class="dropdown-content">
+                          <a class="dropdown-item" v-for="list in lists" :key="list.id" @click="selectList(list)">{{list.name}}</a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="column is-2">
+                    <input v-model="input.date" class="input" type="date" />
+                  </div>
+                  <div class="column is-1 is-flex is-align-items-center">
+                    <label class="checkbox">
+                      <input type="checkbox" v-model="input.flag"/>
+                      <span class="ml-2">Flag</span>
+                    </label>
+                  </div>
+                  <div class="column is-2 is-flex is-align-items-center">
+                    <div v-for="color in ['black', 'red', 'green']" :key="color.index" class="mx-1" :style="{color: color}">
+                      <span v-show="input.color === color">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                      </span>
+                      <span v-show="input.color !== color" @click="chooseColor(color)">
+                        <i class="fas fa-circle fa-2x"></i>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="column is-2">
+                    <div class="control">
+                      <a class="button is-info" @click="addItem"> Add New Task </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- List Adder modal -->
+        <div v-if="modal.mode.listAdder" class="modal is-active">
+          <div class="modal-background"></div>
+          <div class="modal-card">
+            <header class="modal-card-head">
+              <p class="modal-card-title">New list</p>
+              <button class="delete" aria-label="close" @click="closeModal"></button>
+            </header>
+            <section class="modal-card-body">
+              <input v-model="modal.info" class="input" type="text" placeholder="New list's title">
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button is-success" @click="addNewList">Save</button>
+              <button class="button" @click="closeModal">Cancel</button>
+            </footer>
+          </div>
+        </div>
+        <!-- List Editor modal -->
+        <div v-if="modal.mode.listEditor" class="modal is-active">
+          <div class="modal-background"></div>
+          <div class="modal-card">
+            <header class="modal-card-head">
+              <p class="modal-card-title">Edit List</p>
+              <button class="delete" aria-label="close" @click="closeModal"></button>
+            </header>
+            <section class="modal-card-body">
+              <input v-model="modal.info.name" class="input" type="text" placeholder="New list name">
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button is-success" @click="saveList(modal.info.id)">Save</button>
+              <button class="button" @click="closeModal">Cancel</button>
+            </footer>
+          </div>
+        </div>
+        <!-- List Remover modal -->
+        <div v-if="modal.mode.listRemover" class="modal is-active">
+          <div class="modal-background"></div>
+          <div class="modal-card">
+            <section class="modal-card-body">
+              Are you sure you want to delete "{{modal.info.name}}" list?
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button is-danger" @click="removeList(modal.info.id)">Confirm</button>
+              <button class="button" @click="closeModal">Cancel</button>
+            </footer>
+          </div>
+        </div>
+        <!-- Editor modal -->
+        <div v-if="modal.mode.editor" class="modal is-active">
+          <div class="modal-background"></div>
+          <div class="modal-card">
+            <header class="modal-card-head">
+              <p class="modal-card-title">Edit Task</p>
+              <button class="delete" aria-label="close" @click="closeModal"></button>
+            </header>
+            <section class="modal-card-body">
+              <div class="columns">
+                <div class="column is-7">
+                  <input v-model="modal.info.title" class="input" type="text" placeholder="New task name">
+                </div>
+                <div class="column is-5">
+                  <div class="dropdown" :class="{'is-active': input.list.active}">
+                    <div class="dropdown-trigger">
+                      <button class="button" @click="toggleListOption" aria-haspopup="true" aria-controls="dropdown-menu">
+                        <span class="mr-3">{{listSelectorText(lists[getListIndex(modal.info.lid)])}}</span>
+                        <span class="icon is-small">
+                          <i class="fas fa-angle-down" aria-hidden="true"></i>
+                        </span>
+                      </button>
+                    </div>
+                    <div class="dropdown-menu" id="dropdown-menu" role="menu">
+                      <div class="dropdown-content">
+                        <a class="dropdown-item" v-for="list in lists" :key="list.id" @click="selectList(list, true)">{{list.name}}</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="is-flex is-align-items-center mt-3">
+                <input class="input mr-3" type="date" v-model="modal.info.date">
+                <label class="checkbox is-flex is-align-items-center mr-3">
+                  <input type="checkbox" v-model="modal.info.flagged"/>
+                  <span class="ml-2">Flag</span>
+                </label>
+                <div v-for="color in ['black', 'red', 'green']" :key="color.index" class="mx-1" :style="{color: color}">
+                  <span v-show="modal.info.color === color">
+                    <i class="fas fa-check-circle fa-2x"></i>
+                  </span>
+                  <span v-show="modal.info.color !== color" @click="changeColor(color)">
+                    <i class="fas fa-circle fa-2x"></i>
+                  </span>
+                </div>
+              </div>
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button is-success" @click="saveItem(modal.info.id)">Save</button>
+              <button class="button" @click="closeModal">Cancel</button>
+            </footer>
+          </div>
+        </div>
+        <!-- Remover modal -->
+        <div v-if="modal.mode.remover" class="modal is-active">
+          <div class="modal-background"></div>
+          <div class="modal-card">
+            <section class="modal-card-body">
+              Are you sure you want to delete "{{modal.info.title}}"?
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button is-danger" @click="removeItem(modal.info.id)">Confirm</button>
+              <button class="button" @click="closeModal">Cancel</button>
+            </footer>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      var app = new Vue({
+        el: "#app",
+        data: {
+          input: {
+            text: null,
+            list: {
+              active: false,
+              value: null
+            },
+            date: null,
+            flag: false,
+            color: 'black'
+          },
+          lists: [
+            {id: 0, name: "Todo Lists"},
+            {id: 1, name: "DENY!! Lists"},
+          ],
+          todos: [
+              {
+                id: 0,
+                lid: 0,
+                title: "Culpa quis aliqua qui consectetur.",
+                checked: false,
+                flagged: true,
+                date: null,
+                color: 'black'
+              },
+              {
+                id: 1,
+                lid: 0,
+                title: "Eu Lorem labore id ea cillum magna anim.",
+                checked: false,
+                flagged: false,
+                date: "2021-03-20",
+                color: 'black'
+              },
+              {
+                id: 2,
+                lid: 1,
+                title: "Id laborum elit dolore sit amet.",
+                checked: false,
+                flagged: false,
+                date: null,
+                color: 'green'
+              },
+              {
+                id: 3,
+                lid: 1,
+                title: "Et non do qui dolore nisi.",
+                checked: false,
+                flagged: false,
+                date: null,
+                color: 'black'
+              },
+              {
+                id: 4,
+                lid: 0,
+                title: "Enim adipisicing elit qui cupidatat.",
+                checked: false,
+                flagged: true,
+                date: "2021-04-01",
+                color: 'red'
+              }
+          ],
+          modal: {
+            info: null,
+            mode: {
+              listAdder: false,
+              listEditor: false,
+              listRemover: false,
+              editor: false,
+              remover: false
+            }
+          },
+          filter: {
+            hideComplete: false,
+            hideUnflag: false
+          },
+          sort: {
+            selected: 'alphabet',
+            type: {
+              byAlphabet: true,
+              incompleteFirst: false,
+              flaggedFirst: false,
+              byDueDate: false
+            }
+          },
+          filters: {},
+          sorts: {}
+        },
+        computed: {
+          completeItems() {
+            return this.todos.filter(todo => todo.checked === true).length
+          },
+          incompleteItems() {
+            return this.todos.length - this.completeItems
+          },
+          flaggedItems() {
+            return this.todos.filter(todo => todo.flagged).length
+          }
+        },
+        methods: {
+          // Sort TODO
+          filteredTodos(listId) {
+            const type = this.sort.type
+            let todos = this.todos.filter(todo => todo.lid === listId)
+            todos = this.alphabeticallyTodos(todos)
+            if (type.byAlphabet) return todos
+            else if (type.incompleteFirst) return this.incompleteFirstTodos(todos)
+            else if (type.flaggedFirst) return this.flaggedFirstTodos(todos)
+            else if (type.byDueDate) return this.byDueDateTodos(todos)
+            else return todos
+          },
+          alphabeticallyTodos(todos) {
+            todos.sort((a, b) => {
+              const la = a.title.toLowerCase()
+              const lb = b.title.toLowerCase()
+              if (la < lb) return -1
+              else if (la > lb) return 1
+              return 0
+            })
+            return todos
+          },
+          incompleteFirstTodos(todos) {
+            todos.sort((a, b) => {
+              if (!a.checked && b.checked) return -1
+              else if (a.checked && !b.checked) return 1
+              return 0
+            })
+            return todos
+          },
+          flaggedFirstTodos(todos) {
+            todos.sort((a, b) => {
+              if (a.flagged && !b.flagged) return -1
+              else if (!a.flagged && b.flagged) return 1
+              return 0
+            })
+            return todos
+          },
+          byDueDateTodos(todos) {
+            let undateTodos = todos.filter(todo => todo.date === null)
+            let datedTodos = todos.filter(todo => todo.date !== null)
+            datedTodos.sort((a, b) => {
+              if (b.date !== null) return new Date(a.date) - new Date(b.date)
+            })
+            todos = datedTodos.concat(undateTodos)
+            return todos
+          },
+          
+          // Helpers
+          resetInput() {
+            this.input.text = this.input.date = this.input.list.value = null
+            this.input.flag = false
+            this.input.color = 'black'
+          },
+          cloneArray(input, withObject=false) {
+            if (withObject) return JSON.parse(JSON.stringify(input))
+            return input.slice() // .slice() will copy array [, so the pointers to each object are still there.]
+          },
+          getListIndex(id) {
+            const list = this.lists.find(list => list.id === id)
+            return this.lists.indexOf(list)
+          },
+          getItemIndex(id) {
+            const todo = this.todos.find(todo => todo.id === id)
+            return this.todos.indexOf(todo)
+          },
+          toLocalStorage() {
+            localStorage.setItem('lists', JSON.stringify(this.lists))
+            localStorage.setItem('todos', JSON.stringify(this.todos))
+          },
+          nullTaskNameException() {
+            alert("Name of task cannot be empty ! ( ˘︹˘ )")
+          },
+          nullListNameException() {
+            alert("List's name cannot be empty.")
+          },
+          noListSelectException() {
+            alert("Please choose one list !!! ( ˘︹˘ )")
+          },
+          
+          // List Organization
+          addNewList() {
+            const listName = this.modal.info
+            const index = (this.lists.length) ? this.lists.slice(-1)[0].id + 1 : 0
+            const list = {id: index, name: listName}
+            if (listName) {
+              this.lists.push(list)
+              this.setupListEnvironment(list)
+              this.closeModal()
+            } else {
+              this.nullListNameException()
+            }
+            this.toLocalStorage()
+          },
+          saveList(id) {
+            if (this.modal.info.name) {
+              const index = this.getListIndex(id)
+              this.lists[index].name = this.modal.info.name
+              this.closeModal()
+            } else {
+              this.nullListNameException()
+            }
+            this.toLocalStorage()
+          },
+          removeList(id) {
+            const index = this.getListIndex(id)
+            this.lists.splice(index, 1)
+            const elements = this.todos.filter(todo => todo.lid === id)
+            elements.forEach(todo => {
+              const index = this.getItemIndex(todo.id)
+              this.todos.splice(index, 1)
+            })
+            this.toLocalStorage()
+            this.closeModal()
+          },
+          toggleListOption() {
+            this.input.list.active = !this.input.list.active
+          },
+          selectList(list, modal=false) {
+            if (modal) this.modal.info.lid = list.id
+            else this.input.list.value = list
+            this.toggleListOption()
+          },
+          listSelectorText(list) {
+            if (list) return list.name
+            return "Select List"
+          },
+          
+          // TODO Item Organization
+          addItem() {
+            const index = (this.todos.length) ? this.todos.slice(-1)[0].id + 1 : 0
+            if (this.input.text && this.input.list.value) {
+              const item = {
+                id: index,
+                lid: this.input.list.value.id,
+                title: this.input.text,
+                checked: false,
+                flagged: this.input.flag,
+                date: this.input.date,
+                color: this.input.color
+              }
+              this.todos.push(item)
+              this.resetInput()
+            } else {
+              if (!this.input.text) this.nullTaskNameException()
+              else if (!this.input.list.value) this.noListSelectException()
+            }
+            this.toLocalStorage()
+          },
+          saveItem(id) {
+            if (this.modal.info.title) {
+              const index = this.getItemIndex(id)
+              this.todos[index] = this.modal.info
+              this.closeModal()
+            } else {
+              this.nullTaskNameException()
+            }
+            this.toLocalStorage()
+          },
+          removeItem(id) {
+            const index = this.getItemIndex(id)
+            this.todos.splice(index, 1)
+            this.toLocalStorage()
+            this.closeModal()
+          },
+          
+          // Modal Organization
+          setupListEnvironment(list) {
+            const defaultFilter = {...this.filter}
+            const defaultSort = {...this.sort}
+            Vue.set(this.filters, list.id, defaultFilter)
+            Vue.set(this.sorts, list.id, defaultSort)
+            this.$watch(`sorts.${list.id}.selected`, (selectedSort) => {
+              const type = this.sorts[list.id].type
+              type.byAlphabet = (selectedSort === 'alphabet')
+              type.incompleteFirst = (selectedSort === 'incomplete')
+              type.flaggedFirst = (selectedSort === 'flagged')
+              type.byDueDate = (selectedSort === 'date')
+            })
+          },
+          setupModal(id=null, isList=false) {
+            const index = (isList) ? this.getListIndex(id) : this.getItemIndex(id)
+            const source = (isList) ? this.lists : this.todos
+            const data = this.cloneArray(source, true)
+            this.modal.info = data[index]
+          },
+          openListAdder() {
+            this.modal.mode.listAdder = true
+          },
+          openListEditor(id) {
+            this.setupModal(id, true)
+            this.modal.mode.listEditor = true
+          },
+          openListRemover(id) {
+            this.setupModal(id, true)
+            this.modal.mode.listRemover = true
+          },
+          openEditor(id) {
+            this.setupModal(id)
+            this.modal.mode.editor = true
+          },
+          openRemover(id) {
+            this.setupModal(id)
+            this.modal.mode.remover = true
+          },
+          closeModal() {
+            Object.keys(this.modal.mode).map(key => this.modal.mode[key] = false)
+            this.modal.info = null
+          },
+          
+          // Color Chooser
+          chooseColor(color) {
+            this.input.color = color
+          },
+          changeColor(color) {
+            this.modal.info.color = color
+          },
+          
+          // Filter TODO
+          isIncomplete(index) {
+            return !this.todos[index].checked
+          },
+          isFlagged(index) {
+            return this.todos[index].flagged
+          },
+          passFilter(lid, id) {
+            const hideCompleteResult = !this.filters[lid].hideComplete || this.isIncomplete(id)
+            const flagTaskResult = !this.filters[lid].hideUnflag || this.isFlagged(id)
+            const result = hideCompleteResult && flagTaskResult
+            return result
+          }
+        },
+        created() {
+          const savedLists = JSON.parse(localStorage.getItem('lists'))
+          const savedTodos = JSON.parse(localStorage.getItem('todos'))
+          if (!savedLists && !savedTodos) this.toLocalStorage()
+          this.lists = JSON.parse(localStorage.getItem('lists'))
+          this.todos = JSON.parse(localStorage.getItem('todos'))
+
+          this.lists.forEach((list) => {
+            this.setupListEnvironment(list)
+          })
+        }
+      });
+    </script>
+  </body>
+</html>
